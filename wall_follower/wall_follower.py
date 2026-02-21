@@ -6,7 +6,6 @@ from sensor_msgs.msg import LaserScan
 from ackermann_msgs.msg import AckermannDriveStamped
 from visualization_msgs.msg import Marker
 from rcl_interfaces.msg import SetParametersResult
-
 from wall_follower.visualization_tools import VisualizationTools
 
 
@@ -35,10 +34,56 @@ class WallFollower(Node):
         # DO NOT MODIFY THIS! 
         self.add_on_set_parameters_callback(self.parameters_callback)
   
-        # TODO: Initialize your publishers and subscribers here
+        self.drive_pub = self.create_publisher(AckermannDriveStamped, "/drive", 10)
+        self.laser_sub = self.create_subscription(LaserScan, "/scan", self.laser_callback, 10)
 
-        # TODO: Write your callback functions here    
-    
+
+
+    def laser_callback(self, data: LaserScan):
+        ranges = np.array(data.ranges)
+        angles = np.linspace(data.angle_min, data.angle_max, len(ranges))
+
+        # bool array of matching entries that fit this criteria
+        # TODO: Deal with right side case
+        mask = (angles > np.radians(30)) & (angles < np.radians(90))
+
+        # This should only contain left/right side
+        filtered_ranges = ranges[mask]
+        filtered_angles = angles[mask]
+
+        # Turn these into an array of points, each point is 
+        # an offset from the origin of the LIDAR
+        x = filtered_ranges * np.cos(filtered_angles)
+        y = filtered_ranges * np.sin(filtered_angles)
+
+        # Calculate y = mx + b line (least squares)
+        m, b = np.polyfit(x, y, 1)
+
+        wall_distance = abs(b) / np.sqrt(m**2) + 1
+
+
+        error = 10 - wall_distance
+
+
+        # self.get_logger().info("=" * 60)
+        self.get_logger().info(str(error))
+
+        msg = AckermannDriveStamped()
+        msg.header.stamp = self.get_clock().now().to_msg()
+        msg.header.frame_id = "base_link"
+        msg.drive.speed = self.VELOCITY
+        msg.drive.steering_angle = -error / 10
+        msg.drive.steering_angle_velocity = 0.0
+        msg.drive.acceleration = 0.0
+        msg.drive.jerk = 0.0
+
+        self.drive_pub.publish(msg)
+
+
+
+
+
+
     def parameters_callback(self, params):
         """
         DO NOT MODIFY THIS CALLBACK FUNCTION!
