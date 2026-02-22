@@ -128,8 +128,8 @@ class WallFollower(Node):
         error = wall_dist - self.DESIRED_DISTANCE
         wall_angle = np.arctan(m)
 
-        Kp = 1.0
-        Kd = 0.5
+        Kp = 2.0
+        Kd = 0.8
         steering_angle = self.SIDE * Kp * error + Kd * wall_angle
 
         # Corner handling: check for walls in a forward cone
