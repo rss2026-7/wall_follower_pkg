@@ -5,12 +5,9 @@ from rclpy.node import Node
 from sensor_msgs.msg import LaserScan
 from ackermann_msgs.msg import AckermannDriveStamped
 from visualization_msgs.msg import Marker
-from geometry_msgs.msg import Point
-from std_msgs.msg import ColorRGBA
 from rcl_interfaces.msg import SetParametersResult
 from wall_follower.visualization_tools import VisualizationTools
 
-WHEELBASE = 0.325
 LOOKAHEAD_SCALE = 0.5
 LOOKAHEAD_MIN = 0.5
 LOOKAHEAD_MAX = 2.0
@@ -67,26 +64,7 @@ class WallFollower(Node):
         self.drive_pub = self.create_publisher(AckermannDriveStamped, "/drive", 10)
         self.wall_pub = self.create_publisher(Marker, "/wall_marker", 10)
         self.fit_pub = self.create_publisher(Marker, "/fit_marker", 10)
-        self.lookahead_pub = self.create_publisher(Marker, "/lookahead_marker", 10)
         self.laser_sub = self.create_subscription(LaserScan, "/scan", self.laser_callback, 10)
-
-    def publish_lookahead_marker(self, target_x, target_y):
-        marker = Marker()
-        marker.header.frame_id = "base_link"
-        marker.header.stamp = self.get_clock().now().to_msg()
-        marker.ns = "lookahead"
-        marker.id = 0
-        marker.type = Marker.SPHERE
-        marker.action = Marker.ADD
-        marker.pose.position.x = target_x
-        marker.pose.position.y = target_y
-        marker.pose.position.z = 0.0
-        marker.pose.orientation.w = 1.0
-        marker.scale.x = 0.15
-        marker.scale.y = 0.15
-        marker.scale.z = 0.15
-        marker.color = ColorRGBA(r=0.0, g=1.0, b=0.0, a=1.0)
-        self.lookahead_pub.publish(marker)
 
     def laser_callback(self, data: LaserScan):
         ranges = np.array(data.ranges)
