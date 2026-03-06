@@ -41,30 +41,26 @@ class WallFollower(Node):
     def __init__(self):
         super().__init__("wall_follower")
         # Declare parameters to make them available for use
-        # DO NOT MODIFY THIS!
         self.declare_parameter("scan_topic", "/scan")
-        self.declare_parameter("drive_topic", "/drive")
+        self.declare_parameter("drive_topic", "/vesc/high_level/input/nav_0")
         self.declare_parameter("side", 1)
         self.declare_parameter("velocity", 1.0)
         self.declare_parameter("desired_distance", 1.0)
 
         # Fetch constants from the ROS parameter server
-        # DO NOT MODIFY THIS! This is necessary for the tests to be able to test varying parameters!
         self.SCAN_TOPIC = self.get_parameter('scan_topic').get_parameter_value().string_value
         self.DRIVE_TOPIC = self.get_parameter('drive_topic').get_parameter_value().string_value
         self.SIDE = self.get_parameter('side').get_parameter_value().integer_value
         self.VELOCITY = self.get_parameter('velocity').get_parameter_value().double_value
         self.DESIRED_DISTANCE = self.get_parameter('desired_distance').get_parameter_value().double_value
 
-        # This activates the parameters_callback function so that the tests are able
-        # to change the parameters during testing.
-        # DO NOT MODIFY THIS!
+        # This activates the parameters_callback function so that parameters can be changed at runtime.
         self.add_on_set_parameters_callback(self.parameters_callback)
 
-        self.drive_pub = self.create_publisher(AckermannDriveStamped, "/drive", 10)
+        self.drive_pub = self.create_publisher(AckermannDriveStamped, self.DRIVE_TOPIC, 10)
         self.wall_pub = self.create_publisher(Marker, "/wall_marker", 10)
         self.fit_pub = self.create_publisher(Marker, "/fit_marker", 10)
-        self.laser_sub = self.create_subscription(LaserScan, "/scan", self.laser_callback, 10)
+        self.laser_sub = self.create_subscription(LaserScan, self.SCAN_TOPIC, self.laser_callback, 10)
 
     def laser_callback(self, data: LaserScan):
         ranges = np.array(data.ranges)
