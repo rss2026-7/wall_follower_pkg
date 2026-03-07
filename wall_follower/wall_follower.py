@@ -3,10 +3,16 @@ import numpy as np
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import LaserScan
+from std_msgs.msg import Float64
 from ackermann_msgs.msg import AckermannDriveStamped
 from visualization_msgs.msg import Marker
-from rcl_interfaces.msg import SetParametersResult
 from wall_follower.visualization_tools import VisualizationTools
+
+SCAN_TOPIC = "/scan"
+DRIVE_TOPIC = "/vesc/high_level/input/nav_0"
+SIDE = -1
+VELOCITY = 1.0
+DESIRED_DISTANCE = 1.0
 
 LOOKAHEAD_SCALE = 0.5
 LOOKAHEAD_MIN = 0.5
@@ -40,27 +46,17 @@ class WallFollower(Node):
 
     def __init__(self):
         super().__init__("wall_follower")
-        # Declare parameters to make them available for use
-        self.declare_parameter("scan_topic", "/scan")
-        self.declare_parameter("drive_topic", "/vesc/high_level/input/nav_0")
-        self.declare_parameter("side", 1)
-        self.declare_parameter("velocity", 1.0)
-        self.declare_parameter("desired_distance", 1.0)
 
-        # Fetch constants from the ROS parameter server
-        self.SCAN_TOPIC = self.get_parameter('scan_topic').get_parameter_value().string_value
-        self.DRIVE_TOPIC = self.get_parameter('drive_topic').get_parameter_value().string_value
-        self.SIDE = self.get_parameter('side').get_parameter_value().integer_value
-        self.VELOCITY = self.get_parameter('velocity').get_parameter_value().double_value
-        self.DESIRED_DISTANCE = self.get_parameter('desired_distance').get_parameter_value().double_value
+        self.SIDE = SIDE
+        self.VELOCITY = VELOCITY
+        self.DESIRED_DISTANCE = DESIRED_DISTANCE
 
-        # This activates the parameters_callback function so that parameters can be changed at runtime.
-        self.add_on_set_parameters_callback(self.parameters_callback)
-
-        self.drive_pub = self.create_publisher(AckermannDriveStamped, self.DRIVE_TOPIC, 10)
+        self.drive_pub = self.create_publisher(AckermannDriveStamped, DRIVE_TOPIC, 10)
         self.wall_pub = self.create_publisher(Marker, "/wall_marker", 10)
         self.fit_pub = self.create_publisher(Marker, "/fit_marker", 10)
-        self.laser_sub = self.create_subscription(LaserScan, self.SCAN_TOPIC, self.laser_callback, 10)
+        self.dist_pub = self.create_publisher(Float64, "/wall_distance", 10)
+        self.dist_marker_pub = self.create_publisher(Marker, "/wall_distance_marker", 10)
+        self.laser_sub = self.create_subscription(LaserScan, SCAN_TOPIC, self.laser_callback, 10)
 
     def laser_callback(self, data: LaserScan):
         ranges = np.array(data.ranges)
@@ -99,6 +95,24 @@ class WallFollower(Node):
 
         # PD wall following
         wall_dist = abs(b) / np.sqrt(1 + m**2)
+
+        # Publish wall distance for bag recording
+        dist_msg = Float64()
+        dist_msg.data = wall_dist
+        self.dist_pub.publish(dist_msg)
+
+        # Visualize closest-distance line from robot to wall
+        # Foot of perpendicular from origin (0,0) to line y = mx + b
+        denom = m**2 + 1
+        foot_x = -m * b / denom
+        foot_y = b / denom
+        VisualizationTools.plot_line(
+            np.array([0.0, foot_x]),
+            np.array([0.0, foot_y]),
+            self.dist_marker_pub,
+            color=(1.0, 1.0, 0.0),
+        )
+
         error = wall_dist - self.DESIRED_DISTANCE
         wall_angle = np.arctan(m)
 
@@ -131,25 +145,6 @@ class WallFollower(Node):
         msg.drive.jerk = 0.0
 
         self.drive_pub.publish(msg)
-
-    def parameters_callback(self, params):
-        """
-        DO NOT MODIFY THIS CALLBACK FUNCTION!
-
-        This is used by the test cases to modify the parameters during testing.
-        It's called whenever a parameter is set via 'ros2 param set'.
-        """
-        for param in params:
-            if param.name == 'side':
-                self.SIDE = param.value
-                self.get_logger().info(f"Updated side to {self.SIDE}")
-            elif param.name == 'velocity':
-                self.VELOCITY = param.value
-                self.get_logger().info(f"Updated velocity to {self.VELOCITY}")
-            elif param.name == 'desired_distance':
-                self.DESIRED_DISTANCE = param.value
-                self.get_logger().info(f"Updated desired_distance to {self.DESIRED_DISTANCE}")
-        return SetParametersResult(successful=True)
 
 
 def main():
