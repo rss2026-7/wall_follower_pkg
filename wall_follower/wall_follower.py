@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+import csv
+import os
+from datetime import datetime
+
 import numpy as np
 import rclpy
 from rclpy.node import Node
@@ -10,9 +14,9 @@ from wall_follower.visualization_tools import VisualizationTools
 
 SCAN_TOPIC = "/scan"
 DRIVE_TOPIC = "/vesc/high_level/input/nav_0"
-SIDE = -1
-VELOCITY = 1.0
-DESIRED_DISTANCE = 1.0
+SIDE = 1
+VELOCITY = 2.0
+DESIRED_DISTANCE = 0.5
 
 LOOKAHEAD_SCALE = 0.5
 LOOKAHEAD_MIN = 0.5
@@ -57,6 +61,21 @@ class WallFollower(Node):
         self.dist_pub = self.create_publisher(Float64, "/wall_distance", 10)
         self.dist_marker_pub = self.create_publisher(Marker, "/wall_distance_marker", 10)
         self.laser_sub = self.create_subscription(LaserScan, SCAN_TOPIC, self.laser_callback, 10)
+
+        # CSV logging
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        self.get_logger().info(f"VELOCITYY {self.VELOCITY}")
+        csv_path = os.path.join(os.getcwd(), f"wall_run_{self.VELOCITY}mps_{timestamp}.csv")
+        self._csv_file = open(csv_path, "w", newline="")
+        self._csv_writer = csv.writer(self._csv_file)
+        self._csv_writer.writerow([
+            "time_sec", "wall_distance", "desired_distance", "error",
+            "ransac_slope", "ransac_intercept", "wall_angle_rad",
+            "Kp", "Kd",
+            "steering_angle_rad", "velocity", "forward_distance", "corner_urgency",
+            "num_wall_points",
+        ])
+        self.get_logger().info(f"Logging to {csv_path}")
 
     def laser_callback(self, data: LaserScan):
         ranges = np.array(data.ranges)
@@ -121,6 +140,8 @@ class WallFollower(Node):
         steering_angle = self.SIDE * Kp * error + Kd * wall_angle
 
         # Corner handling: check for walls in a forward cone
+        forward_dist = float("inf")
+        urgency = 0.0
         L = np.clip(abs(self.VELOCITY) * LOOKAHEAD_SCALE, LOOKAHEAD_MIN, LOOKAHEAD_MAX)
         fwd_cone = np.abs(angles) < np.radians(25)
         fwd_ranges = ranges[fwd_cone]
@@ -134,6 +155,18 @@ class WallFollower(Node):
                 steering_angle = urgency * corner_steer + (1.0 - urgency) * steering_angle
 
         steering_angle = np.clip(steering_angle, -0.34, 0.34)
+
+        # Log to CSV
+        now = self.get_clock().now().nanoseconds * 1e-9
+        self._csv_writer.writerow([
+            f"{now:.6f}", f"{wall_dist:.4f}", f"{self.DESIRED_DISTANCE:.4f}",
+            f"{error:.4f}", f"{m:.4f}", f"{b:.4f}", f"{wall_angle:.4f}",
+            f"{Kp:.2f}", f"{Kd:.2f}",
+            f"{steering_angle:.4f}", f"{self.VELOCITY:.2f}",
+            f"{forward_dist:.4f}", f"{urgency:.4f}",
+            len(filtered_ranges),
+        ])
+        self._csv_file.flush()
 
         msg = AckermannDriveStamped()
         msg.header.stamp = self.get_clock().now().to_msg()
