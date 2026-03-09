@@ -20,7 +20,7 @@ cd ~/racecar_ws && colcon build --packages-select wall_follower && source instal
 
 Run:
 ```
-    ros2 launch wall_follower launch_test_sim.launch.py
+ros2 launch wall_follower launch_test_sim.launch.py
 ```
 
 
